@@ -2,27 +2,33 @@ use reqwest::{multipart, Client};
 use std::fs::File;
 use std::io::Read;
 use std::error::Error;
-use std::future::Future;
+use std::fs;
 
-pub fn deploy() -> impl Future<Output = Result<(), Box<dyn Error>>> {
-    async move {
+pub async fn deploy() -> Result<(), Box<dyn Error>> {
         println!("===============================================================");
         println!("Fazendo upload da pasta server pra criar a função serverless...");
         println!("===============================================================");
 
-        let mut file = File::open("server/developer-code.js")?;
+        let mut form: multipart::Form = multipart::Form::new();
 
-        let mut buffer = Vec::new();
+        for file in fs::read_dir("./server").unwrap() {
+            let wrapped_file =file.unwrap();
+            let mut opened_file = File::open(wrapped_file.path().display().to_string())?;
 
-        file.read_to_end(&mut buffer)?;
+            let mut buffer = Vec::new();
 
-        let part = multipart::Part::bytes(buffer)
-            .file_name("developer-code.js")
-            .mime_str("text/plain")?;
+            opened_file.read_to_end(&mut buffer)?;
+            let file_name = wrapped_file.file_name().into_string().unwrap().to_string();
+            let part = multipart::Part::bytes(buffer)
+                .file_name(file_name)
+                .mime_str("text/plain")?;
+            
+            
+            form = form.part("file", part);
+        }
 
-        let form = multipart::Form::new()
-            .text("slug", "miniapp-zoro")
-            .part("file", part);
+        let form = form
+            .text("slug", "miniapp-zoro");
 
         let client = Client::new();
 
@@ -36,9 +42,10 @@ pub fn deploy() -> impl Future<Output = Result<(), Box<dyn Error>>> {
             println!("Upload concluído com sucesso!");
         } else {
             let error_message = format!("Falha no upload. Código de status: {}", response.status());
+            println!("{}", response.text().await.unwrap().to_string());
             println!("{}", error_message);
         }
 
         Ok(())
-    }
+    
 }
